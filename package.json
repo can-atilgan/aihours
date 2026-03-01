@@ -3,6 +3,7 @@
   "displayName": "AI Hours",
   "description": "Steam-style playtime tracker for AI agent coding sessions",
   "version": "0.0.1",
+  "license": "MIT",
   "publisher": "aihours",
   "engines": {
     "vscode": "^1.85.0"

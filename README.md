@@ -1,6 +1,6 @@
 # AI Hours
 
-> *You know how Steam shows you've played Stardew Valley for 847 hours and you feel weirdly proud of that? This is that — but for building with AI.*
+> *You know how Steam shows you've played Dota 2 for 15,000+ hours and you feel weirdly proud of that? This is that — but for building with AI.*
 
 **AI Hours** is a VSCode extension that tracks how much time you actually spend building with AI. Not time staring at the screen, not time in a meeting with your laptop open — active, in-the-zone, prompts-flying coding time.
 
@@ -105,6 +105,18 @@ Go build something.
 
 ---
 
+## Why this exists
+
+I couldn't find a tool that just tracks how much time I actually spend building with AI. So I built one. I'll keep working on it as long as I or the community find it useful.
+
+---
+
 ## Contributing
 
 Issues and PRs welcome. Be cool.
+
+---
+
+## License
+
+[MIT](LICENSE)
