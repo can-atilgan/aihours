@@ -1,0 +1,60 @@
+{
+  "name": "aihours",
+  "displayName": "AI Hours",
+  "description": "Steam-style playtime tracker for AI agent coding sessions",
+  "version": "0.0.1",
+  "publisher": "aihours",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "aihours",
+          "title": "AI Hours",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aihours": [
+        {
+          "id": "aihours.view",
+          "name": "AI Hours",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aihours.openPanel",
+        "title": "AI Hours: Open Panel"
+      },
+      {
+        "command": "aihours.resetStats",
+        "title": "AI Hours: Reset Stats"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -watch -p tsconfig.json",
+    "package": "vsce package",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.18"
+  }
+}
