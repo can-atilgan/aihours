@@ -11,6 +11,17 @@ const LOG_DIR  = path.join(os.homedir(), '.clocked');
 const LOG_FILE = path.join(LOG_DIR, 'events.jsonl');
 const CWD      = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
 
+// ── In-memory session tracking ──────────────────────────────────────────────
+
+export interface LiveSession {
+  project:            string;
+  startedAt:          number;       // ms — when session first seen
+  promptTs:           number | null; // ms — when current response started
+  lastResponseMs:     number | null; // frozen duration of last completed response
+  longestResponseMs:  number;       // high-water mark
+  isResponding:       boolean;
+}
+
 export function activate(context: vscode.ExtensionContext) {
   // Status bar
   const bar = vscode.window.createStatusBarItem('clocked.bar', vscode.StatusBarAlignment.Right, 100);
@@ -36,10 +47,64 @@ export function activate(context: vscode.ExtensionContext) {
   let statusMode = context.globalState.get<'today' | 'reset' | 'alltime'>('statusMode', 'today');
 
   // Persistent accordion expansion state
-  const defaultExpanded = ['since-reset', 'streak', 'settings'];
+  const defaultExpanded = ['since-reset', 'alltime', 'streak', 'settings'];
   const expandedSections = new Set<string>(
     context.globalState.get<string[]>('expandedSections', defaultExpanded)
   );
+
+  // ── In-memory session tracking (no persistence, no file scanning) ──────────
+  const sessions = new Map<string, LiveSession>();
+  let sessionBytes = 0;
+
+  function readSessionEvents() {
+    if (!fs.existsSync(LOG_FILE)) return;
+    const size = fs.statSync(LOG_FILE).size;
+    if (size <= sessionBytes) {
+      if (size < sessionBytes) { sessions.clear(); sessionBytes = 0; } // file truncated (nuke)
+      return;
+    }
+    const fd  = fs.openSync(LOG_FILE, 'r');
+    const buf = Buffer.alloc(size - sessionBytes);
+    fs.readSync(fd, buf, 0, buf.length, sessionBytes);
+    fs.closeSync(fd);
+    sessionBytes = size;
+
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line);
+        const { session_id, event, cwd, ts } = ev;
+        if (!session_id) continue;
+        const evMs = +new Date(ts);
+
+        if (event === 'UserPromptSubmit') {
+          let sess = sessions.get(session_id);
+          if (!sess) {
+            sess = { project: path.basename(cwd) || cwd, startedAt: evMs, promptTs: null, lastResponseMs: null, longestResponseMs: 0, isResponding: false };
+            sessions.set(session_id, sess);
+          }
+          // If was responding without a Stop, treat as interrupted
+          if (sess.isResponding && sess.promptTs) {
+            const elapsed = evMs - sess.promptTs;
+            sess.lastResponseMs = elapsed;
+            if (elapsed > sess.longestResponseMs) sess.longestResponseMs = elapsed;
+          }
+          sess.promptTs = evMs;
+          sess.isResponding = true;
+        }
+
+        if (event === 'Stop' || event === 'SessionEnd') {
+          const sess = sessions.get(session_id);
+          if (sess && sess.isResponding && sess.promptTs) {
+            const elapsed = evMs - sess.promptTs;
+            sess.lastResponseMs = elapsed;
+            if (elapsed > sess.longestResponseMs) sess.longestResponseMs = elapsed;
+            sess.isResponding = false;
+          }
+        }
+      } catch { /* skip malformed lines */ }
+    }
+  }
 
   context.subscriptions.push(
     vscode.commands.registerCommand('clocked.toggleMode', () => {
@@ -104,6 +169,8 @@ export function activate(context: vscode.ExtensionContext) {
         const activityPath = path.join(LOG_DIR, 'activity.json');
         if (fs.existsSync(LOG_FILE))     fs.unlinkSync(LOG_FILE);
         if (fs.existsSync(activityPath)) fs.unlinkSync(activityPath);
+        sessions.clear();
+        sessionBytes = 0;
         processEvents();
         update();
         vscode.window.showInformationMessage('All Clocked AI data nuked.');
@@ -132,11 +199,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   function update() {
     try {
+      readSessionEvents();
       const stats = calcStats();
       const [icon, ms, tooltip] =
-        statusMode === 'today' ? ['🕐', stats.todayActiveAiTime, 'Clocked AI today. Click to expand.'] :
-        statusMode === 'reset' ? ['🔄', stats.activeAiTime,      'Clocked AI since reset. Click to expand.'] :
-                                 ['🔮', stats.everActiveAiTime,  'Clocked AI all time. Click to expand.'];
+        statusMode === 'today' ? ['🕐', stats.todayActiveAiTime, 'Clocked today. Click to expand.'] :
+        statusMode === 'reset' ? ['🔄', stats.activeAiTime,      'Clocked since reset. Click to expand.'] :
+                                 ['🔮', stats.everActiveAiTime,  'Clocked all time. Click to expand.'];
       barIcon    = icon;
       barBaseMs  = ms;
       barBaseTs  = Date.now();
@@ -144,7 +212,7 @@ export function activate(context: vscode.ExtensionContext) {
       barStreak  = stats.currentStreak;
       barTooltip = tooltip;
       tickBar();
-      provider.update(stats, statusMode, expandedSections);
+      provider.update(stats, statusMode, expandedSections, sessions);
     } catch {
       bar.text = '🕐 Clocked AI';
     }

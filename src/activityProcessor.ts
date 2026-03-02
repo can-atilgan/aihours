@@ -31,14 +31,18 @@ interface RawEvent {
   event: string;
 }
 
-function readNewEvents(eventsPath: string, since: string): RawEvent[] {
+function readNewEvents(eventsPath: string, byteOffset: number): RawEvent[] {
   if (!fs.existsSync(eventsPath)) return [];
-  const sinceMs = +new Date(since);
-  return fs.readFileSync(eventsPath, 'utf8')
+  const stat = fs.statSync(eventsPath);
+  if (stat.size <= byteOffset) return [];
+  const fd  = fs.openSync(eventsPath, 'r');
+  const buf = Buffer.alloc(stat.size - byteOffset);
+  fs.readSync(fd, buf, 0, buf.length, byteOffset);
+  fs.closeSync(fd);
+  return buf.toString('utf8')
     .split('\n')
     .filter(l => l.trim())
-    .flatMap(l => { try { return [JSON.parse(l) as RawEvent]; } catch { return []; } })
-    .filter(e => +new Date(e.ts) > sinceMs);
+    .flatMap(l => { try { return [JSON.parse(l) as RawEvent]; } catch { return []; } });
 }
 
 function emptyActivityFile(now: string): ActivityFile {
@@ -81,10 +85,10 @@ export function processEvents(
   const activities = [...file.activities];
   let lastResetAt  = file.last_reset_at;
 
-  // Only read events.jsonl if the file has grown since last run
+  // Only read new bytes appended since last run
   const currentSize = fs.existsSync(eventsPath) ? fs.statSync(eventsPath).size : 0;
-  const newEvents   = currentSize !== file.last_events_size
-    ? readNewEvents(eventsPath, file.last_updated_at)
+  const newEvents   = currentSize > file.last_events_size
+    ? readNewEvents(eventsPath, file.last_events_size)
     : [];
 
   // Find the open activity (last entry with no end), if any

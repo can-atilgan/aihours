@@ -21,24 +21,15 @@ Idle gaps are automatically excluded, so the number means something. If you walk
 
 ---
 
-## Quick setup
+## Setup
 
-One command does everything — copies the hook script and wires Claude Code settings:
+One command. That's it.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/can-atilgan/clocked-ai/main/install.sh | bash
 ```
 
-Then install the VSCode extension (`.vsix`):
-
-```bash
-git clone https://github.com/can-atilgan/clocked-ai && cd clocked-ai
-npm install && npm run package
-```
-
-In VSCode: **Extensions → ··· → Install from VSIX** and pick the generated file.
-
-### Open the panel
+This installs the hook script, wires Claude Code settings, and installs the VSCode extension. Restart VSCode and you're live.
 
 Click the clock icon in the secondary sidebar, or click the status bar item at the bottom right.
 

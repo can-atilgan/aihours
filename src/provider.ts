@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Stats, formatFullDuration } from './stats';
+import type { LiveSession } from './extension';
 
 export class ClockedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'clocked.view';
@@ -27,15 +28,16 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  update(stats: Stats, mode: 'today' | 'reset' | 'alltime', expanded: Set<string>) {
+  update(stats: Stats, mode: 'today' | 'reset' | 'alltime', expanded: Set<string>, sessions?: Map<string, LiveSession>) {
     if (!this._view) return;
-    this._view.webview.html = this._html(stats, mode, expanded);
+    this._view.webview.html = this._html(stats, mode, expanded, sessions);
   }
 
   private _html(
     stats?: Stats,
     mode: 'today' | 'reset' | 'alltime' = 'today',
-    expanded = new Set<string>(['since-reset', 'streak', 'settings'])
+    expanded = new Set<string>(['since-reset', 'alltime', 'streak', 'settings']),
+    sessions?: Map<string, LiveSession>,
   ): string {
     const s    = stats;
     const fmtF = (ms: number) => stats ? formatFullDuration(ms) : '—';
@@ -106,6 +108,44 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
 
     const sinceChip = s?.periodStart ? `since ${fmtDate(s.periodStart)}` : '';
     const everChip  = s?.firstRecorded ? `since ${fmtDate(s.firstRecorded)}` : '';
+
+    // ── Sessions content ───────────────────────────────────────────────────────
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtShort = (ms: number) => {
+      const sec = Math.floor(ms / 1000) % 60;
+      const min = Math.floor(ms / 60000) % 60;
+      const hr  = Math.floor(ms / 3600000);
+      return hr > 0 ? `${hr}h ${min}m ${sec}s` : min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+    };
+    const sessionList = sessions ? Array.from(sessions.entries()) : [];
+    const sessionsChip = sessionList.length > 0 ? `${sessionList.length} live` : '';
+    const sessionsContent = sessionList.length === 0
+      ? `<div class="session-empty">No sessions yet</div>`
+      : sessionList.map(([id, sess]) => {
+          const startTime = new Date(sess.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const liveDot = sess.isResponding ? '<span class="live-dot"></span>' : '';
+          const lastResp = sess.isResponding && sess.promptTs
+            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}">⚡ ${fmtShort(Date.now() - sess.promptTs)}</span>`
+            : sess.lastResponseMs !== null
+              ? `<span class="session-stat">⚡ ${fmtShort(sess.lastResponseMs)}</span>`
+              : `<span class="session-stat">⚡ —</span>`;
+          const longest = sess.longestResponseMs > 0
+            ? `<span class="session-stat">⏱ ${fmtShort(sess.longestResponseMs)}</span>`
+            : `<span class="session-stat">⏱ —</span>`;
+          return `
+      <div class="session-row${sess.isResponding ? ' session-responding' : ''}">
+        <div class="session-header">
+          ${liveDot}
+          <span class="session-project">${esc(sess.project)}</span>
+          <span class="session-start">${startTime}</span>
+        </div>
+        <div class="session-stats">
+          ${lastResp}
+          <span class="session-sep">&middot;</span>
+          ${longest}
+        </div>
+      </div>`;
+        }).join('');
 
     return /* html */`<!DOCTYPE html>
 <html lang="en">
@@ -318,6 +358,65 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     color: #c94f4f;
   }
   .btn-red:hover { background: rgba(180, 40, 40, 0.38); }
+
+  /* ── Sessions ── */
+  .session-empty {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    padding: 4px 0;
+  }
+  .session-row {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.1));
+  }
+  .session-row:last-child { border-bottom: none; }
+  .session-responding {
+    border-left: 2px solid #4ec9b0;
+    padding-left: 8px;
+  }
+  .session-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ec9b0;
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .session-project {
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .session-start {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: auto;
+  }
+  .session-stats {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    padding-left: 12px;
+  }
+  .session-stat {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .session-sep {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.5;
+  }
 </style>
 </head>
 <body>
@@ -337,6 +436,7 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   ${masterSection('since-reset', '🔄 Since Reset', sinceResetContent, sinceChip)}
   ${masterSection('alltime', '🔮 All Time', alltimeContent, everChip)}
   ${masterSection('streak', '🔥 Building Streak', streakContent, '', 'At least 1 hour of building with AI per day keeps the streak alive!')}
+  ${masterSection('sessions', '📋 Sessions', sessionsContent, sessionsChip)}
   ${masterSection('settings', '⚙️ Settings', settingsContent)}
 
 <script>
@@ -371,15 +471,30 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     return parts.join(' ');
   }
 
+  function fmtShort(ms) {
+    const sec = Math.floor(ms / 1000) % 60;
+    const min = Math.floor(ms / 60000) % 60;
+    const hr  = Math.floor(ms / 3600000);
+    return hr > 0 ? hr + 'h ' + min + 'm ' + sec + 's' : min > 0 ? min + 'm ' + sec + 's' : sec + 's';
+  }
+
   function tick() {
-    if (!IS_AI_ACTIVE) return;
-    const elapsed = Date.now() - TICK_BASE_TS;
-    const hero  = document.getElementById('hero-time');
-    const reset = document.getElementById('reset-time');
-    const ever  = document.getElementById('ever-time');
-    if (hero)  hero.textContent  = fmtFull(TODAY_BASE_MS + elapsed);
-    if (reset) reset.textContent = fmtFull(RESET_BASE_MS + elapsed);
-    if (ever)  ever.textContent  = fmtFull(EVER_BASE_MS  + elapsed);
+    const now = Date.now();
+    // Aggregate time tickers
+    if (IS_AI_ACTIVE) {
+      const elapsed = now - TICK_BASE_TS;
+      const hero  = document.getElementById('hero-time');
+      const reset = document.getElementById('reset-time');
+      const ever  = document.getElementById('ever-time');
+      if (hero)  hero.textContent  = fmtFull(TODAY_BASE_MS + elapsed);
+      if (reset) reset.textContent = fmtFull(RESET_BASE_MS + elapsed);
+      if (ever)  ever.textContent  = fmtFull(EVER_BASE_MS  + elapsed);
+    }
+    // Session live response timers
+    document.querySelectorAll('.session-live-timer').forEach(el => {
+      const ts = Number(el.getAttribute('data-prompt-ts'));
+      if (ts) el.textContent = '⚡ ' + fmtShort(now - ts);
+    });
   }
   tick();
   setInterval(tick, 1000);
