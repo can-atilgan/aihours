@@ -10,9 +10,12 @@ Each line is a JSON event with at minimum: `ts`, `event`, `session_id`.
 Relevant event types:
 - `UserPromptSubmit` — user sent a prompt
 - `Stop` — claude finished responding
+- `ManualAfk` — user manually marked themselves AFK (closes open activity immediately)
 - `SessionEnd` — session closed (any reason: normal, crash, force quit)
 
 Only `Stop` means "claude is done responding". `SessionEnd` is ignored by the activity processor — it fires when a session closes (terminal exit, crash, VS Code restart) and has no relation to Claude finishing a response. AFK detection handles session closure naturally via the grace window.
+
+`ManualAfk` is an honest opt-in: the developer clicks ⏸ in the Today panel to immediately end the current activity at that moment. No grace window — the activity closes at the event timestamp.
 
 ## Cross-session AFK detection
 
@@ -34,10 +37,12 @@ Open activity:   `{ start, lastClaudeDone }` — still building or in grace wind
 **No open activity:**
 - `UserPromptSubmit` → start new open activity `{ start: event.ts }`
 - `Stop` → ignore
+- `ManualAfk` → ignore
 - `SessionEnd` → always ignored by activity processor
 
 **Open activity exists** (process new events in chronological order):
 - `Stop` → update open activity's `lastClaudeDone`
+- `ManualAfk` → close activity immediately at `event.ts`, no grace window
 - `UserPromptSubmit` and `now - lastClaudeDone <= 20min` → activity stays open
 - `UserPromptSubmit` and `now - lastClaudeDone > 20min` → close activity at `lastClaudeDone + 20min`, start new open activity at `event.ts`
 

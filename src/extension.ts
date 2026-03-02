@@ -187,6 +187,14 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Manual AFK — immediately close the current open activity
+  context.subscriptions.push(
+    vscode.commands.registerCommand('clocked.manualAfk', () => {
+      appendEvent({ event: 'ManualAfk', cwd: CWD });
+      update();
+    })
+  );
+
   // Nuke all activity data command
   context.subscriptions.push(
     vscode.commands.registerCommand('clocked.nukeActivity', async () => {

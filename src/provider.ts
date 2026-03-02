@@ -24,6 +24,8 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
         vscode.commands.executeCommand('clocked.setMode', msg.mode);
       } else if (msg.command === 'clearClosedSessions') {
         vscode.commands.executeCommand('clocked.clearClosedSessions');
+      } else if (msg.command === 'manualAfk') {
+        vscode.commands.executeCommand('clocked.manualAfk');
       } else if (msg.command === 'toggleSection') {
         vscode.commands.executeCommand('clocked.toggleSection', msg.section);
       }
@@ -81,13 +83,14 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
       <span class="stat-value" id="ever-time">${fmtF(s?.everActiveAiTime ?? 0)}</span>
     </div>`;
 
+    const STREAK_TOOLTIP = 'Build with AI for at least 1 hour per day to keep the streak alive';
     const streakContent = `
     <div class="grid">
-      <div class="stat">
+      <div class="stat" title="${STREAK_TOOLTIP}">
         <span class="stat-label">Current</span>
         <span class="stat-value">${s ? `🔥 ${s.currentStreak}d` : '—'}</span>
       </div>
-      <div class="stat">
+      <div class="stat" title="${STREAK_TOOLTIP}">
         <span class="stat-label">Best</span>
         <span class="stat-value">${s ? `🏆 ${s.longestStreak}d` : '—'}</span>
       </div>
@@ -185,6 +188,21 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   .hero {
     padding-bottom: 10px;
   }
+  .hero-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .afk-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.5;
+    padding: 0 2px;
+  }
+  .afk-btn:hover { opacity: 1; }
   .hero-descriptor {
     font-size: 11px;
     color: var(--vscode-descriptionForeground);
@@ -385,7 +403,7 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 14px;
     color: var(--vscode-descriptionForeground);
     opacity: 0.5;
     padding: 0 2px;
@@ -414,7 +432,10 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
 
   <!-- ── Today hero ───────────────────────────────────────── -->
   <div class="hero">
-    <div class="master-label">🕐 Today</div>
+    <div class="hero-title-row">
+      <div class="master-label">🕐 Today</div>
+      ${s?.isAiActive ? `<button class="afk-btn" title="Mark yourself AFK — closes the current activity" onclick="vscode.postMessage({command:'manualAfk'})">⏸</button>` : ''}
+    </div>
     <div class="hero-descriptor" title="${AFK_TOOLTIP}">Building actively with AI for</div>
     <div class="hero-time-row">
       <div class="hero-time" id="hero-time">${fmtF(s?.todayActiveAiTime ?? 0)}</div>

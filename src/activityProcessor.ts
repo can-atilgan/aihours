@@ -105,6 +105,13 @@ export function processEvents(
       continue;
     }
 
+    if (ev.event === 'ManualAfk') {
+      if (openIdx === -1) continue;
+      activities[openIdx] = { start: (activities[openIdx] as OpenActivity).start, end: ev.ts };
+      openIdx = -1;
+      continue;
+    }
+
     if (ev.event === 'Stop') {
       if (openIdx === -1) continue;
       (activities[openIdx] as OpenActivity).lastClaudeDone = ev.ts;
