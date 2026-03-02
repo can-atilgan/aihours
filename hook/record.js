@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const DIR = path.join(os.homedir(), '.aihours');
+const DIR = path.join(os.homedir(), '.clocked');
 const LOG = path.join(DIR, 'events.jsonl');
 
 fs.mkdirSync(DIR, { recursive: true });

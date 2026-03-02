@@ -1,14 +1,14 @@
 {
-  "name": "aihours",
-  "displayName": "AI Hours",
+  "name": "clocked-ai",
+  "displayName": "Clocked AI",
   "description": "Steam-style playtime tracker for AI agent coding sessions",
   "version": "0.0.1",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/can-atilgan/aihours.git"
+    "url": "https://github.com/can-atilgan/clocked-ai.git"
   },
-  "publisher": "aihours",
+  "publisher": "clocked-ai",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -23,29 +23,29 @@
     "viewsContainers": {
       "secondarySidebar": [
         {
-          "id": "aihours",
-          "title": "AI Hours",
+          "id": "clocked",
+          "title": "Clocked AI",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "aihours": [
+      "clocked": [
         {
-          "id": "aihours.view",
-          "name": "AI Hours",
+          "id": "clocked.view",
+          "name": "Clocked AI",
           "type": "webview"
         }
       ]
     },
     "commands": [
       {
-        "command": "aihours.openPanel",
-        "title": "AI Hours: Open Panel"
+        "command": "clocked.openPanel",
+        "title": "Clocked AI: Open Panel"
       },
       {
-        "command": "aihours.resetStats",
-        "title": "AI Hours: Reset Stats"
+        "command": "clocked.resetStats",
+        "title": "Clocked AI: Reset Stats"
       }
     ]
   },

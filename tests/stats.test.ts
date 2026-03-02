@@ -150,7 +150,7 @@ import * as os   from 'os';
 import * as path from 'path';
 import { processEvents, readActivityFile } from '../src/activityProcessor';
 
-const TMP = path.join(os.tmpdir(), 'aihours-test');
+const TMP = path.join(os.tmpdir(), 'clocked-test');
 
 function setup() {
   fs.mkdirSync(TMP, { recursive: true });

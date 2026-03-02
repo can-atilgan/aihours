@@ -3,7 +3,7 @@ import * as os   from 'os';
 import * as path from 'path';
 
 /**
- * Optional user config file: ~/.aihours/config.json
+ * Optional user config file: ~/.clocked/config.json
  *
  * All fields are optional — omit any to keep the default.
  *
@@ -20,7 +20,7 @@ interface UserConfig {
 }
 
 function loadUserConfig(): UserConfig {
-  const cfgPath = path.join(os.homedir(), '.aihours', 'config.json');
+  const cfgPath = path.join(os.homedir(), '.clocked', 'config.json');
   try {
     return JSON.parse(fs.readFileSync(cfgPath, 'utf8')) as UserConfig;
   } catch {

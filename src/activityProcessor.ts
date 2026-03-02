@@ -4,8 +4,8 @@ import * as path from 'path';
 
 import { AFK_THRESHOLD_MS } from './config';
 
-const DEFAULT_ACTIVITY_PATH = path.join(os.homedir(), '.aihours', 'activity.json');
-const DEFAULT_EVENTS_PATH   = path.join(os.homedir(), '.aihours', 'events.jsonl');
+const DEFAULT_ACTIVITY_PATH = path.join(os.homedir(), '.clocked', 'activity.json');
+const DEFAULT_EVENTS_PATH   = path.join(os.homedir(), '.clocked', 'events.jsonl');
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

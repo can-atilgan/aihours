@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { Stats, formatFullDuration } from './stats';
 
-export class AiHoursViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'aihours.view';
+export class ClockedViewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewType = 'clocked.view';
   private _view?: vscode.WebviewView;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
@@ -14,15 +14,15 @@ export class AiHoursViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage(msg => {
       if (msg.command === 'resetStats') {
-        vscode.commands.executeCommand('aihours.resetStats');
+        vscode.commands.executeCommand('clocked.resetStats');
       } else if (msg.command === 'nukeActivity') {
-        vscode.commands.executeCommand('aihours.nukeActivity');
+        vscode.commands.executeCommand('clocked.nukeActivity');
       } else if (msg.command === 'toggleMode') {
-        vscode.commands.executeCommand('aihours.toggleMode');
+        vscode.commands.executeCommand('clocked.toggleMode');
       } else if (msg.command === 'setMode') {
-        vscode.commands.executeCommand('aihours.setMode', msg.mode);
+        vscode.commands.executeCommand('clocked.setMode', msg.mode);
       } else if (msg.command === 'toggleSection') {
-        vscode.commands.executeCommand('aihours.toggleSection', msg.section);
+        vscode.commands.executeCommand('clocked.toggleSection', msg.section);
       }
     });
   }

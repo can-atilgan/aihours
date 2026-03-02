@@ -40,7 +40,7 @@ interface RawEvent {
   meta:       Record<string, string> | null;
 }
 
-const LOG_PATH = path.join(os.homedir(), '.aihours', 'events.jsonl');
+const LOG_PATH = path.join(os.homedir(), '.clocked', 'events.jsonl');
 
 export function appendEvent(event: { event: string; cwd: string }): void {
   const line: RawEvent = {

@@ -4,31 +4,31 @@ import * as os from 'os';
 import * as path from 'path';
 import { calcStats, appendEvent, formatDuration } from './stats';
 import { processEvents } from './activityProcessor';
-import { AiHoursViewProvider } from './provider';
+import { ClockedViewProvider } from './provider';
 import { REFRESH_INTERVAL_MS } from './config';
 
-const LOG_DIR  = path.join(os.homedir(), '.aihours');
+const LOG_DIR  = path.join(os.homedir(), '.clocked');
 const LOG_FILE = path.join(LOG_DIR, 'events.jsonl');
 const CWD      = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
 
 export function activate(context: vscode.ExtensionContext) {
   // Status bar
-  const bar = vscode.window.createStatusBarItem('aihours.bar', vscode.StatusBarAlignment.Right, 100);
-  bar.name    = 'AI Hours';
-  bar.command = 'aihours.openPanel';
+  const bar = vscode.window.createStatusBarItem('clocked.bar', vscode.StatusBarAlignment.Right, 100);
+  bar.name    = 'Clocked AI';
+  bar.command = 'clocked.openPanel';
   bar.show();
   context.subscriptions.push(bar);
 
   // Sidebar provider
-  const provider = new AiHoursViewProvider(context.extensionUri);
+  const provider = new ClockedViewProvider(context.extensionUri);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('aihours.view', provider)
+    vscode.window.registerWebviewViewProvider('clocked.view', provider)
   );
 
   // Open panel command — focuses our view in the secondary sidebar
   context.subscriptions.push(
-    vscode.commands.registerCommand('aihours.openPanel', () => {
-      vscode.commands.executeCommand('aihours.view.focus');
+    vscode.commands.registerCommand('clocked.openPanel', () => {
+      vscode.commands.executeCommand('clocked.view.focus');
     })
   );
 
@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('aihours.toggleMode', () => {
+    vscode.commands.registerCommand('clocked.toggleMode', () => {
       statusMode = statusMode === 'today' ? 'reset' : statusMode === 'reset' ? 'alltime' : 'today';
       context.globalState.update('statusMode', statusMode);
       update();
@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('aihours.setMode', (m: 'today' | 'reset' | 'alltime') => {
+    vscode.commands.registerCommand('clocked.setMode', (m: 'today' | 'reset' | 'alltime') => {
       statusMode = m;
       context.globalState.update('statusMode', statusMode);
       update();
@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Toggle accordion section and persist to globalState
   context.subscriptions.push(
-    vscode.commands.registerCommand('aihours.toggleSection', (section: string) => {
+    vscode.commands.registerCommand('clocked.toggleSection', (section: string) => {
       if (expandedSections.has(section)) {
         expandedSections.delete(section);
       } else {
@@ -72,9 +72,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Reset all-time stats command
   context.subscriptions.push(
-    vscode.commands.registerCommand('aihours.resetStats', async () => {
+    vscode.commands.registerCommand('clocked.resetStats', async () => {
       const confirm = await vscode.window.showWarningMessage(
-        'Reset all AI Hours stats? This cannot be undone.',
+        'Reset all Clocked AI stats? This cannot be undone.',
         { modal: true },
         'Reset'
       );
@@ -83,7 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
           appendEvent({ event: 'StatsReset', cwd: CWD });
           processEvents();
           update();
-          vscode.window.showInformationMessage('AI Hours stats reset. History preserved.');
+          vscode.window.showInformationMessage('Clocked AI stats reset. History preserved.');
         } catch {
           vscode.window.showErrorMessage('Failed to reset stats.');
         }
@@ -93,7 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Nuke all activity data command
   context.subscriptions.push(
-    vscode.commands.registerCommand('aihours.nukeActivity', async () => {
+    vscode.commands.registerCommand('clocked.nukeActivity', async () => {
       const input = await vscode.window.showInputBox({
         prompt: 'Type "nuke" to permanently delete all activity data',
         placeHolder: 'nuke',
@@ -106,7 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (fs.existsSync(activityPath)) fs.unlinkSync(activityPath);
         processEvents();
         update();
-        vscode.window.showInformationMessage('All AI Hours data nuked.');
+        vscode.window.showInformationMessage('All Clocked AI data nuked.');
       } catch {
         vscode.window.showErrorMessage('Failed to nuke activity data.');
       }
@@ -134,9 +134,9 @@ export function activate(context: vscode.ExtensionContext) {
     try {
       const stats = calcStats();
       const [icon, ms, tooltip] =
-        statusMode === 'today' ? ['🕐', stats.todayActiveAiTime, 'AI Hours today. Click to expand.'] :
-        statusMode === 'reset' ? ['🔄', stats.activeAiTime,      'AI Hours since reset. Click to expand.'] :
-                                 ['🔮', stats.everActiveAiTime,  'AI Hours all time. Click to expand.'];
+        statusMode === 'today' ? ['🕐', stats.todayActiveAiTime, 'Clocked AI today. Click to expand.'] :
+        statusMode === 'reset' ? ['🔄', stats.activeAiTime,      'Clocked AI since reset. Click to expand.'] :
+                                 ['🔮', stats.everActiveAiTime,  'Clocked AI all time. Click to expand.'];
       barIcon    = icon;
       barBaseMs  = ms;
       barBaseTs  = Date.now();
@@ -146,7 +146,7 @@ export function activate(context: vscode.ExtensionContext) {
       tickBar();
       provider.update(stats, statusMode, expandedSections);
     } catch {
-      bar.text = '🕐 AI Hours';
+      bar.text = '🕐 Clocked AI';
     }
   }
 
