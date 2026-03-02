@@ -77,19 +77,38 @@ MERGEJS
 
 # ── 3. Download and install .vsix ─────────────────────────────────
 echo "  [..] Fetching latest release..."
-VSIX_URL=$(curl -fsL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-  | grep '"browser_download_url".*\.vsix"' \
-  | head -1 \
-  | sed 's/.*"browser_download_url": *"\(.*\)"/\1/') || true
+
+# Use Node to parse JSON — grep/sed are unreliable across platforms
+VSIX_URL=$(node -e "
+  const https = require('https');
+  const url = 'https://api.github.com/repos/$REPO/releases/latest';
+  https.get(url, { headers: { 'User-Agent': 'clocked-ai-installer' } }, res => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      try {
+        const rel = JSON.parse(data);
+        const asset = (rel.assets || []).find(a => a.name && a.name.endsWith('.vsix'));
+        if (asset) process.stdout.write(asset.browser_download_url);
+        else { console.error('  \x1b[31m[error]\x1b[0m No .vsix asset in latest release'); process.exit(1); }
+      } catch (e) { console.error('  \x1b[31m[error]\x1b[0m Failed to parse GitHub response: ' + e.message); process.exit(1); }
+    });
+  }).on('error', e => { console.error('  \x1b[31m[error]\x1b[0m Could not reach GitHub: ' + e.message); process.exit(1); });
+") || VSIX_URL=""
 
 if [ -z "$VSIX_URL" ]; then
-  echo "  [skip] No .vsix found in releases — install manually"
-  echo "         Build it: git clone https://github.com/$REPO && cd clocked-ai && npm install && npm run package"
+  echo "  \033[31m[fail]\033[0m Could not fetch .vsix from GitHub releases"
+  echo "         Install manually: https://github.com/$REPO/releases"
+  echo "         Or build it: git clone https://github.com/$REPO && cd clocked-ai && npm install && npm run package"
   echo "         Then: code --install-extension clocked-ai-*.vsix"
 else
   VSIX_TMP=$(mktemp /tmp/clocked-XXXXXX.vsix)
-  curl -fsSL -o "$VSIX_TMP" "$VSIX_URL"
-  code --install-extension "$VSIX_TMP" --force 2>/dev/null && echo "  [ok] Extension installed" || echo "  [skip] Could not auto-install — run: code --install-extension $VSIX_TMP"
+  if curl -fsSL -o "$VSIX_TMP" "$VSIX_URL"; then
+    code --install-extension "$VSIX_TMP" --force >/dev/null 2>&1 && echo "  [ok] Extension installed" \
+      || echo "  \033[31m[fail]\033[0m Could not auto-install — run: code --install-extension $VSIX_TMP"
+  else
+    echo "  \033[31m[fail]\033[0m Download failed from: $VSIX_URL"
+  fi
   rm -f "$VSIX_TMP"
 fi
 

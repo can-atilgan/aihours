@@ -10,7 +10,7 @@
   },
   "publisher": "clocked-ai",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.92.0"
   },
   "categories": [
     "Other"
@@ -44,8 +44,8 @@
         "title": "Clocked AI: Open Panel"
       },
       {
-        "command": "clocked.resetStats",
-        "title": "Clocked AI: Reset Stats"
+        "command": "clocked.resetCheckpoint",
+        "title": "Clocked AI: Reset Checkpoint"
       }
     ]
   },

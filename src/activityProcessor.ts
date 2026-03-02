@@ -15,7 +15,7 @@ export type Activity = ClosedActivity | OpenActivity;
 
 export interface ActivityFile {
   last_updated_at:    string;
-  last_reset_at:      string | null;
+  last_checkpoint_at:  string | null;
   last_events_size:   number;          // byte size of events.jsonl at last processing
   activities:         Activity[];
 }
@@ -46,7 +46,7 @@ function readNewEvents(eventsPath: string, byteOffset: number): RawEvent[] {
 }
 
 function emptyActivityFile(now: string): ActivityFile {
-  return { last_updated_at: now, last_reset_at: null, last_events_size: 0, activities: [] };
+  return { last_updated_at: now, last_checkpoint_at: null, last_events_size: 0, activities: [] };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ export function readActivityFile(activityPath = DEFAULT_ACTIVITY_PATH): Activity
 export function processEvents(
   activityPath = DEFAULT_ACTIVITY_PATH,
   eventsPath   = DEFAULT_EVENTS_PATH,
-): void {
+): ActivityFile {
   const now    = new Date().toISOString();
   const nowMs  = +new Date(now);
   const dir    = path.dirname(activityPath);
@@ -76,14 +76,15 @@ export function processEvents(
       fs.renameSync(eventsPath, backup);
     }
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(activityPath, JSON.stringify(emptyActivityFile(now), null, 2));
-    return;
+    const empty = emptyActivityFile(now);
+    fs.writeFileSync(activityPath, JSON.stringify(empty, null, 2));
+    return empty;
   }
 
   // Load existing state
   const file       = readActivityFile(activityPath);
   const activities = [...file.activities];
-  let lastResetAt  = file.last_reset_at;
+  let lastCheckpointAt = file.last_checkpoint_at;
 
   // Only read new bytes appended since last run
   const currentSize = fs.existsSync(eventsPath) ? fs.statSync(eventsPath).size : 0;
@@ -99,12 +100,12 @@ export function processEvents(
   for (const ev of newEvents) {
     const evMs = +new Date(ev.ts);
 
-    if (ev.event === 'StatsReset') {
-      lastResetAt = ev.ts;
+    if (ev.event === 'CheckpointReset' || ev.event === 'StatsReset') {
+      lastCheckpointAt = ev.ts;
       continue;
     }
 
-    if (ev.event === 'Stop' || ev.event === 'SessionEnd') {
+    if (ev.event === 'Stop') {
       if (openIdx === -1) continue;
       (activities[openIdx] as OpenActivity).lastClaudeDone = ev.ts;
       continue;
@@ -153,9 +154,10 @@ export function processEvents(
   // Rewrite activity.json
   const updated: ActivityFile = {
     last_updated_at:  now,
-    last_reset_at:    lastResetAt,
+    last_checkpoint_at: lastCheckpointAt,
     last_events_size: currentSize,
     activities,
   };
   fs.writeFileSync(activityPath, JSON.stringify(updated, null, 2));
+  return updated;
 }

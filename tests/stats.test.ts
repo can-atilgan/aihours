@@ -13,8 +13,8 @@ function t(base: Date, ms = 0): string {
   return new Date(+base + ms).toISOString();
 }
 
-function af(activities: ActivityFile['activities'], last_reset_at: string | null = null): ActivityFile {
-  return { last_updated_at: new Date().toISOString(), last_reset_at, last_events_size: 0, activities };
+function af(activities: ActivityFile['activities'], last_checkpoint_at: string | null = null): ActivityFile {
+  return { last_updated_at: new Date().toISOString(), last_checkpoint_at, last_events_size: 0, activities };
 }
 
 // ── formatDuration ────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ describe('calcStats — empty', () => {
   it('all zeros for no activities', () => {
     const s = calcStats(af([]));
     expect(s.todayActiveAiTime).toBe(0);
-    expect(s.activeAiTime).toBe(0);
+    expect(s.checkpointAiTime).toBe(0);
     expect(s.everActiveAiTime).toBe(0);
     expect(s.currentStreak).toBe(0);
     expect(s.longestStreak).toBe(0);
@@ -47,7 +47,7 @@ describe('calcStats — active AI time', () => {
     const s = calcStats(af([
       { start: t(BASE, 0), end: t(BASE, 30 * MIN) },
     ]));
-    expect(s.activeAiTime).toBeCloseTo(30 * MIN, -2);
+    expect(s.checkpointAiTime).toBeCloseTo(30 * MIN, -2);
     expect(s.everActiveAiTime).toBeCloseTo(30 * MIN, -2);
   });
 
@@ -56,16 +56,16 @@ describe('calcStats — active AI time', () => {
       { start: t(BASE, 0),        end: t(BASE, 10 * MIN) },
       { start: t(BASE, 60 * MIN), end: t(BASE, 80 * MIN) },
     ]));
-    expect(s.activeAiTime).toBeCloseTo(30 * MIN, -2);
+    expect(s.checkpointAiTime).toBeCloseTo(30 * MIN, -2);
   });
 
-  it('period filter: only activities after last_reset_at count for activeAiTime', () => {
+  it('checkpoint filter: only activities after last_checkpoint_at count for checkpointAiTime', () => {
     const resetTs = t(BASE, 30 * MIN);
     const s = calcStats(af([
       { start: t(BASE, 0),        end: t(BASE, 20 * MIN) }, // before reset
       { start: t(BASE, 40 * MIN), end: t(BASE, 60 * MIN) }, // after reset
     ], resetTs));
-    expect(s.activeAiTime).toBeCloseTo(20 * MIN, -2);   // only post-reset
+    expect(s.checkpointAiTime).toBeCloseTo(20 * MIN, -2);   // only post-reset
     expect(s.everActiveAiTime).toBeCloseTo(40 * MIN, -2); // all time
   });
 
@@ -185,7 +185,7 @@ describe('processEvents — no open activity', () => {
   it('UserPromptSubmit → starts new open activity', () => {
     const { ap, ep } = setup();
     const now = new Date().toISOString();
-    writeActivity(ap, { last_updated_at: new Date(Date.now() - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [] });
+    writeActivity(ap, { last_updated_at: new Date(Date.now() - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [] });
     writeEvents(ep, [{ ts: now, event: 'UserPromptSubmit' }]);
     processEvents(ap, ep);
     const file = readActivityFile(ap);
@@ -196,7 +196,7 @@ describe('processEvents — no open activity', () => {
 
   it('Stop with no open activity → ignored', () => {
     const { ap, ep } = setup();
-    writeActivity(ap, { last_updated_at: new Date(Date.now() - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [] });
+    writeActivity(ap, { last_updated_at: new Date(Date.now() - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [] });
     writeEvents(ep, [{ ts: new Date().toISOString(), event: 'Stop' }]);
     processEvents(ap, ep);
     const file = readActivityFile(ap);
@@ -209,7 +209,7 @@ describe('processEvents — open activity', () => {
     const { ap, ep } = setup();
     const start  = new Date(Date.now() - 10 * MIN).toISOString();
     const stopTs = new Date().toISOString();
-    writeActivity(ap, { last_updated_at: new Date(Date.now() - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [{ start }] });
+    writeActivity(ap, { last_updated_at: new Date(Date.now() - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [{ start }] });
     writeEvents(ep, [{ ts: stopTs, event: 'Stop' }]);
     processEvents(ap, ep);
     const file = readActivityFile(ap);
@@ -222,7 +222,7 @@ describe('processEvents — open activity', () => {
     const start     = new Date(now - AFK_THRESHOLD_MS * 2).toISOString();
     const doneTs    = new Date(now - AFK_THRESHOLD_MS / 2).toISOString();
     const promptTs  = new Date(now).toISOString();
-    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [{ start, lastClaudeDone: doneTs }] });
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [{ start, lastClaudeDone: doneTs }] });
     writeEvents(ep, [{ ts: promptTs, event: 'UserPromptSubmit' }]);
     processEvents(ap, ep);
     const file = readActivityFile(ap);
@@ -236,7 +236,7 @@ describe('processEvents — open activity', () => {
     const start     = new Date(now - AFK_THRESHOLD_MS * 4).toISOString();
     const doneTs    = new Date(now - AFK_THRESHOLD_MS * 2).toISOString();
     const promptTs  = new Date(now).toISOString();
-    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [{ start, lastClaudeDone: doneTs }] });
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [{ start, lastClaudeDone: doneTs }] });
     writeEvents(ep, [{ ts: promptTs, event: 'UserPromptSubmit' }]);
     processEvents(ap, ep);
     const file = readActivityFile(ap);
@@ -250,7 +250,7 @@ describe('processEvents — open activity', () => {
     const now     = Date.now();
     const start   = new Date(now - AFK_THRESHOLD_MS * 4).toISOString();
     const doneTs  = new Date(now - AFK_THRESHOLD_MS * 2).toISOString();
-    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [{ start, lastClaudeDone: doneTs }] });
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [{ start, lastClaudeDone: doneTs }] });
     writeEvents(ep, []); // no new events
     processEvents(ap, ep);
     const file = readActivityFile(ap);
@@ -261,21 +261,21 @@ describe('processEvents — open activity', () => {
     const { ap, ep } = setup();
     const now   = Date.now();
     const start = new Date(now - 60 * MIN).toISOString();
-    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [{ start }] });
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [{ start }] });
     writeEvents(ep, []); // no new events
     processEvents(ap, ep);
     const file = readActivityFile(ap);
     expect('end' in file.activities[0]).toBe(false);
   });
 
-  it('StatsReset → updates last_reset_at', () => {
+  it('CheckpointReset → updates last_checkpoint_at', () => {
     const { ap, ep } = setup();
     const now      = Date.now();
     const resetTs  = new Date(now).toISOString();
-    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_reset_at: null, last_events_size: 0, activities: [] });
-    writeEvents(ep, [{ ts: resetTs, event: 'StatsReset' }]);
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, activities: [] });
+    writeEvents(ep, [{ ts: resetTs, event: 'CheckpointReset' }]);
     processEvents(ap, ep);
     const file = readActivityFile(ap);
-    expect(file.last_reset_at).toBe(resetTs);
+    expect(file.last_checkpoint_at).toBe(resetTs);
   });
 });

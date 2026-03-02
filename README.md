@@ -11,7 +11,7 @@ Live status bar. Daily streak. Honest numbers.
 ## What it tracks
 
 - **Today** — active AI building time for today
-- **Since Reset** — your current period (reset whenever you want a fresh start)
+- **Checkpoint** — your current period (reset whenever you want a fresh start)
 - **All Time** — the full career clock, unaffected by resets
 - **Building Streak** — consecutive days with 1+ hour of active AI time
 
@@ -28,6 +28,12 @@ One command. That's it.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/can-atilgan/clocked-ai/main/install.sh | bash
 ```
+
+> **Windows (PowerShell):** PowerShell aliases `curl` to `Invoke-WebRequest` and `bash` may resolve to WSL. Use Git Bash instead:
+>
+> ```powershell
+> & "$env:ProgramFiles\Git\bin\bash.exe" -c "curl -fsSL https://raw.githubusercontent.com/can-atilgan/clocked-ai/main/install.sh | bash"
+> ```
 
 This installs the hook script, wires Claude Code settings, and installs the VSCode extension. Restart VSCode and you're live.
 

@@ -12,7 +12,7 @@ Relevant event types:
 - `Stop` — claude finished responding
 - `SessionEnd` — session closed (any reason: normal, crash, force quit)
 
-`Stop` and `SessionEnd` are treated identically for AFK purposes: both mean "claude is done".
+Only `Stop` means "claude is done responding". `SessionEnd` is ignored by the activity processor — it fires when a session closes (terminal exit, crash, VS Code restart) and has no relation to Claude finishing a response. AFK detection handles session closure naturally via the grace window.
 
 ## Cross-session AFK detection
 
@@ -33,10 +33,11 @@ Open activity:   `{ start, lastClaudeDone }` — still building or in grace wind
 
 **No open activity:**
 - `UserPromptSubmit` → start new open activity `{ start: event.ts }`
-- `Stop` / `SessionEnd` → ignore
+- `Stop` → ignore
+- `SessionEnd` → always ignored by activity processor
 
 **Open activity exists** (process new events in chronological order):
-- `Stop` / `SessionEnd` → update open activity's `lastClaudeDone`
+- `Stop` → update open activity's `lastClaudeDone`
 - `UserPromptSubmit` and `now - lastClaudeDone <= 20min` → activity stays open
 - `UserPromptSubmit` and `now - lastClaudeDone > 20min` → close activity at `lastClaudeDone + 20min`, start new open activity at `event.ts`
 
@@ -57,6 +58,8 @@ Processed file, rewritten on each refresh.
 ```json
 {
   "last_updated_at": "2026-03-01T16:30:00Z",
+  "last_checkpoint_at": null,
+  "last_events_size": 12345,
   "activities": [
     { "start": "2026-03-01T10:00:00Z", "end": "2026-03-01T10:45:00Z" },
     { "start": "2026-03-01T14:00:00Z", "lastClaudeDone": "2026-03-01T14:05:00Z" }
@@ -65,8 +68,8 @@ Processed file, rewritten on each refresh.
 ```
 
 On each refresh:
-1. Read `last_updated_at` from `activity.json`
-2. Scan `events.jsonl` backwards until that timestamp to get new events
+1. Read `last_events_size` from `activity.json`
+2. Read new bytes from `events.jsonl` starting at that byte offset
 3. Process new events in chronological order using rules above
 4. Run timer check on open activity
 5. Rewrite `activity.json` with `last_updated_at = now`

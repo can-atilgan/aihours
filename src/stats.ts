@@ -15,15 +15,15 @@ import { AFK_THRESHOLD_MS, STREAK_MIN_MS } from './config';
 export interface Stats {
   // Today (local calendar day)
   todayActiveAiTime:  number; // ms
-  // Period AI (since last reset)
-  activeAiTime:  number; // ms
-  // Ever AI — ignores StatsReset
+  // Checkpoint AI (since last checkpoint reset)
+  checkpointAiTime: number; // ms
+  // Ever AI — ignores checkpoint resets
   everActiveAiTime: number; // ms
   // Streaks
   currentStreak: number; // days
   longestStreak: number; // days
   // Dates
-  periodStart:   string | null;
+  checkpointStart: string | null;
   firstRecorded: string | null;
   // Live state
   isAiActive: boolean;
@@ -175,37 +175,37 @@ function calcLongestStreak(byDay: Map<string, number>): number {
 
 export function calcStats(activityFile?: ActivityFile): Stats {
   const file = activityFile ?? readActivityFile();
-  const { activities, last_reset_at } = file;
+  const { activities, last_checkpoint_at } = file;
 
   // Today bounds
   const todayKey             = localDayKey(new Date());
   const [todayFrom, todayTo] = localDayBounds(todayKey);
 
   // Active AI time
-  // Today and ever use all activities (reset doesn't affect these views)
-  // Period clips each activity's contribution to after the reset timestamp
-  const resetMs           = last_reset_at ? +new Date(last_reset_at) : -Infinity;
+  // Today and ever use all activities (checkpoint doesn't affect these views)
+  // Checkpoint clips each activity's contribution to after the checkpoint timestamp
+  const checkpointMs      = last_checkpoint_at ? +new Date(last_checkpoint_at) : -Infinity;
   const todayActiveAiTime = calcActiveMs(activities, todayFrom, todayTo);
-  const activeAiTime      = calcActiveMs(activities, resetMs);
+  const checkpointAiTime  = calcActiveMs(activities, checkpointMs);
   const everActiveAiTime  = calcActiveMs(activities);
 
-  // Streaks use all-time activities (resets don't break streaks)
+  // Streaks use all-time activities (checkpoints don't break streaks)
   const byDay       = activeAiByDay(activities);
   const yesterday   = new Date(); yesterday.setDate(yesterday.getDate() - 1);
   const streakToday = streakEndingAt(byDay, new Date());
   const streakYest  = streakEndingAt(byDay, yesterday);
 
   // Dates
-  const periodStart   = last_reset_at ?? (activities[0] as OpenActivity | undefined)?.start ?? null;
-  const firstRecorded = (activities[0] as OpenActivity | undefined)?.start ?? null;
+  const checkpointStart = last_checkpoint_at ?? (activities[0] as OpenActivity | undefined)?.start ?? null;
+  const firstRecorded   = (activities[0] as OpenActivity | undefined)?.start ?? null;
 
   return {
     todayActiveAiTime,
-    activeAiTime,
+    checkpointAiTime,
     everActiveAiTime,
     currentStreak:  streakToday > 0 ? streakToday : streakYest,
     longestStreak:  calcLongestStreak(byDay),
-    periodStart,
+    checkpointStart,
     firstRecorded,
     isAiActive:     isAiActive(activities),
   };

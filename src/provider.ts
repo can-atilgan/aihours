@@ -14,29 +14,31 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this._html();
 
     webviewView.webview.onDidReceiveMessage(msg => {
-      if (msg.command === 'resetStats') {
-        vscode.commands.executeCommand('clocked.resetStats');
+      if (msg.command === 'resetCheckpoint') {
+        vscode.commands.executeCommand('clocked.resetCheckpoint');
       } else if (msg.command === 'nukeActivity') {
         vscode.commands.executeCommand('clocked.nukeActivity');
       } else if (msg.command === 'toggleMode') {
         vscode.commands.executeCommand('clocked.toggleMode');
       } else if (msg.command === 'setMode') {
         vscode.commands.executeCommand('clocked.setMode', msg.mode);
+      } else if (msg.command === 'clearClosedSessions') {
+        vscode.commands.executeCommand('clocked.clearClosedSessions');
       } else if (msg.command === 'toggleSection') {
         vscode.commands.executeCommand('clocked.toggleSection', msg.section);
       }
     });
   }
 
-  update(stats: Stats, mode: 'today' | 'reset' | 'alltime', expanded: Set<string>, sessions?: Map<string, LiveSession>) {
+  update(stats: Stats, mode: 'today' | 'checkpoint' | 'alltime', expanded: Set<string>, sessions?: Map<string, LiveSession>) {
     if (!this._view) return;
     this._view.webview.html = this._html(stats, mode, expanded, sessions);
   }
 
   private _html(
     stats?: Stats,
-    mode: 'today' | 'reset' | 'alltime' = 'today',
-    expanded = new Set<string>(['since-reset', 'alltime', 'streak', 'settings']),
+    mode: 'today' | 'checkpoint' | 'alltime' = 'today',
+    expanded = new Set<string>(['checkpoint', 'alltime', 'streak', 'settings']),
     sessions?: Map<string, LiveSession>,
   ): string {
     const s    = stats;
@@ -49,15 +51,18 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     const isOpen = (id: string) => expanded.has(id);
 
     // Master accordion (same visual weight as Current Session header)
-    const masterSection = (id: string, label: string, content: string, chip = '', tooltip = '') => {
+    const masterSection = (id: string, label: string, content: string, chip = '', tooltip = '', action = '') => {
       const open = isOpen(id);
       return `
   <div class="master-accordion">
-    <button class="master-acc-header" onclick="toggle('${id}')"${tooltip ? ` title="${tooltip}"` : ''}>
-      <span class="master-acc-arrow">${open ? '▾' : '▸'}</span>
-      <span class="master-acc-label">${label}</span>
-      ${chip ? `<span class="master-acc-chip">${chip}</span>` : ''}
-    </button>
+    <div class="master-acc-row">
+      <button class="master-acc-header" onclick="toggle('${id}')"${tooltip ? ` title="${tooltip}"` : ''}>
+        <span class="master-acc-arrow">${open ? '▾' : '▸'}</span>
+        <span class="master-acc-label">${label}</span>
+        ${chip ? `<span class="master-acc-chip">${chip}</span>` : ''}
+      </button>
+      ${action}
+    </div>
     <div class="master-acc-body${open ? '' : ' collapsed'}">${content}</div>
   </div>`;
     };
@@ -66,9 +71,9 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
 
     const AFK_TOOLTIP = 'Active time — estimated AFK gaps are excluded';
 
-    const sinceResetContent = `
+    const checkpointContent = `
     <div class="stat">
-      <span class="stat-value" id="reset-time">${fmtF(s?.activeAiTime ?? 0)}</span>
+      <span class="stat-value" id="checkpoint-time">${fmtF(s?.checkpointAiTime ?? 0)}</span>
     </div>`;
 
     const alltimeContent = `
@@ -93,20 +98,20 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
       <span class="setting-label">Status bar</span>
       <div class="seg-ctrl">
         <button class="seg-btn${mode === 'today'   ? ' active' : ''}" onclick="vscode.postMessage({command:'setMode',mode:'today'})">🕐</button>
-        <button class="seg-btn${mode === 'reset'   ? ' active' : ''}" onclick="vscode.postMessage({command:'setMode',mode:'reset'})">🔄</button>
+        <button class="seg-btn${mode === 'checkpoint'   ? ' active' : ''}" onclick="vscode.postMessage({command:'setMode',mode:'checkpoint'})">🔄</button>
         <button class="seg-btn${mode === 'alltime' ? ' active' : ''}" onclick="vscode.postMessage({command:'setMode',mode:'alltime'})">🔮</button>
       </div>
     </div>
     <div class="setting-row">
-      <span class="setting-label">Reset period</span>
-      <button class="btn btn-amber" onclick="vscode.postMessage({command:'resetStats'})">Reset</button>
+      <span class="setting-label">Reset checkpoint</span>
+      <button class="btn btn-amber" onclick="vscode.postMessage({command:'resetCheckpoint'})">Reset</button>
     </div>
     <div class="setting-row">
       <span class="setting-label">Nuke all data</span>
       <button class="btn btn-red" onclick="vscode.postMessage({command:'nukeActivity'})">Nuke</button>
     </div>`;
 
-    const sinceChip = s?.periodStart ? `since ${fmtDate(s.periodStart)}` : '';
+    const checkpointChip = s?.checkpointStart ? `since ${fmtDate(s.checkpointStart)}` : '';
     const everChip  = s?.firstRecorded ? `since ${fmtDate(s.firstRecorded)}` : '';
 
     // ── Sessions content ───────────────────────────────────────────────────────
@@ -118,26 +123,31 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
       return hr > 0 ? `${hr}h ${min}m ${sec}s` : min > 0 ? `${min}m ${sec}s` : `${sec}s`;
     };
     const sessionList = sessions ? Array.from(sessions.entries()) : [];
-    const sessionsChip = sessionList.length > 0 ? `${sessionList.length} live` : '';
+    const liveCount = sessionList.filter(([, s]) => !s.closed).length;
+    const closedCount = sessionList.length - liveCount;
+    const sessionsChip = sessionList.length > 0 ? `${liveCount} live · ${sessionList.length} total` : '';
+    const clearClosedBtn = closedCount > 0
+      ? `<button class="session-clear-closed" title="Remove all closed sessions" onclick="vscode.postMessage({command:'clearClosedSessions'})">🧹</button>`
+      : '';
     const sessionsContent = sessionList.length === 0
       ? `<div class="session-empty">No sessions yet</div>`
       : sessionList.map(([id, sess]) => {
-          const startTime = new Date(sess.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const shortId = id.slice(0, 8);
           const liveDot = sess.isResponding ? '<span class="live-dot"></span>' : '';
           const lastResp = sess.isResponding && sess.promptTs
-            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}">⚡ ${fmtShort(Date.now() - sess.promptTs)}</span>`
+            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}" title="Current AI response time">⚡ ${fmtShort(Date.now() - sess.promptTs)}</span>`
             : sess.lastResponseMs !== null
-              ? `<span class="session-stat">⚡ ${fmtShort(sess.lastResponseMs)}</span>`
-              : `<span class="session-stat">⚡ —</span>`;
+              ? `<span class="session-stat" title="Last AI response time">⚡ ${fmtShort(sess.lastResponseMs)}</span>`
+              : `<span class="session-stat" title="Last AI response time">⚡ —</span>`;
           const longest = sess.longestResponseMs > 0
-            ? `<span class="session-stat">⏱ ${fmtShort(sess.longestResponseMs)}</span>`
-            : `<span class="session-stat">⏱ —</span>`;
+            ? `<span class="session-stat" title="Longest AI response time">⏱ ${fmtShort(sess.longestResponseMs)}</span>`
+            : `<span class="session-stat" title="Longest AI response time">⏱ —</span>`;
+          const rowClass = sess.isResponding ? ' session-responding' : sess.closed ? ' session-closed' : ' session-standby';
           return `
-      <div class="session-row${sess.isResponding ? ' session-responding' : ''}">
+      <div class="session-row${rowClass}">
         <div class="session-header">
           ${liveDot}
-          <span class="session-project">${esc(sess.project)}</span>
-          <span class="session-start">${startTime}</span>
+          <span class="session-id">${shortId}</span>
         </div>
         <div class="session-stats">
           ${lastResp}
@@ -199,47 +209,20 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     letter-spacing: 0.04em;
   }
 
-  /* ── Sub-accordion (today detail, visually nested under Today hero) ── */
-  .sub-accordion {
-    border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.15));
-    margin-left: 2px;
-  }
-  .sub-acc-header {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    width: 100%;
-    background: none;
-    border: none;
-    color: var(--vscode-foreground);
-    cursor: pointer;
-    padding: 6px 0;
-    text-align: left;
-  }
-  .sub-acc-label {
-    font-size: 10px;
-    color: var(--vscode-descriptionForeground);
-    letter-spacing: 0.04em;
-  }
-  .sub-acc-peek {
-    margin-left: auto;
-    font-size: 10px;
-    color: var(--vscode-descriptionForeground);
-    opacity: 0.75;
-  }
-  .sub-acc-body { padding-bottom: 8px; }
-  .sub-acc-body.collapsed { display: none; }
-
   /* ── Master accordion (All Time, Streak, Settings) ── */
   .master-accordion {
     border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.25));
     margin-top: 4px;
   }
+  .master-acc-row {
+    display: flex;
+    align-items: center;
+  }
   .master-acc-header {
     display: flex;
     align-items: center;
     gap: 5px;
-    width: 100%;
+    flex: 1;
     background: none;
     border: none;
     color: var(--vscode-foreground);
@@ -271,14 +254,6 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   }
   .master-acc-body { padding-bottom: 12px; }
   .master-acc-body.collapsed { display: none; }
-
-  /* ── Shared accordion arrow ── */
-  .acc-arrow {
-    font-size: 9px;
-    color: var(--vscode-descriptionForeground);
-    width: 10px;
-    flex-shrink: 0;
-  }
 
   /* ── Stats grid ── */
   .grid {
@@ -346,7 +321,7 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     text-transform: uppercase;
     cursor: pointer;
   }
-  /* Amber — for reset period */
+  /* Amber — for checkpoint reset */
   .btn-amber {
     background: rgba(190, 120, 40, 0.22);
     color: #d4883a;
@@ -375,6 +350,15 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     border-left: 2px solid #4ec9b0;
     padding-left: 8px;
   }
+  .session-standby {
+    padding-left: 10px;
+  }
+  .session-closed {
+    padding-left: 10px;
+  }
+  .session-closed .session-id {
+    color: rgba(180, 40, 40, 0.7);
+  }
   .session-header {
     display: flex;
     align-items: center;
@@ -392,15 +376,22 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
-  .session-project {
-    font-size: 12px;
-    font-weight: 600;
+  .session-id {
+    font-size: 11px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-descriptionForeground);
   }
-  .session-start {
+  .session-clear-closed {
+    background: none;
+    border: none;
+    cursor: pointer;
     font-size: 10px;
     color: var(--vscode-descriptionForeground);
-    margin-left: auto;
+    opacity: 0.5;
+    padding: 0 2px;
+    vertical-align: middle;
   }
+  .session-clear-closed:hover { opacity: 1; }
   .session-stats {
     display: flex;
     align-items: center;
@@ -433,10 +424,10 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
 
 
   <!-- ── Period + ever master sections ──────────────────── -->
-  ${masterSection('since-reset', '🔄 Since Reset', sinceResetContent, sinceChip)}
+  ${masterSection('checkpoint', '🔄 Checkpoint', checkpointContent, checkpointChip)}
   ${masterSection('alltime', '🔮 All Time', alltimeContent, everChip)}
   ${masterSection('streak', '🔥 Building Streak', streakContent, '', 'At least 1 hour of building with AI per day keeps the streak alive!')}
-  ${masterSection('sessions', '📋 Sessions', sessionsContent, sessionsChip)}
+  ${masterSection('sessions', '📋 Sessions', sessionsContent, sessionsChip, '', clearClosedBtn)}
   ${masterSection('settings', '⚙️ Settings', settingsContent)}
 
 <script>
@@ -449,7 +440,7 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   const IS_AI_ACTIVE    = ${s?.isAiActive ?? false};
   const TICK_BASE_TS    = Date.now();
   const TODAY_BASE_MS   = ${s?.todayActiveAiTime ?? 0};
-  const RESET_BASE_MS   = ${s?.activeAiTime ?? 0};
+  const CHECKPOINT_BASE_MS   = ${s?.checkpointAiTime ?? 0};
   const EVER_BASE_MS    = ${s?.everActiveAiTime ?? 0};
 
   function fmtFull(ms) {
@@ -484,10 +475,10 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     if (IS_AI_ACTIVE) {
       const elapsed = now - TICK_BASE_TS;
       const hero  = document.getElementById('hero-time');
-      const reset = document.getElementById('reset-time');
+      const reset = document.getElementById('checkpoint-time');
       const ever  = document.getElementById('ever-time');
       if (hero)  hero.textContent  = fmtFull(TODAY_BASE_MS + elapsed);
-      if (reset) reset.textContent = fmtFull(RESET_BASE_MS + elapsed);
+      if (reset) reset.textContent = fmtFull(CHECKPOINT_BASE_MS + elapsed);
       if (ever)  ever.textContent  = fmtFull(EVER_BASE_MS  + elapsed);
     }
     // Session live response timers
