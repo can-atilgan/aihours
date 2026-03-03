@@ -104,12 +104,19 @@ if [ -z "$VSIX_URL" ]; then
 else
   VSIX_TMP=$(mktemp /tmp/clocked-XXXXXX.vsix)
   if curl -fsSL -o "$VSIX_TMP" "$VSIX_URL"; then
-    code --install-extension "$VSIX_TMP" --force >/dev/null 2>&1 && echo "  [ok] Extension installed" \
-      || echo "  \033[31m[fail]\033[0m Could not auto-install — run: code --install-extension $VSIX_TMP"
+    if code --install-extension "$VSIX_TMP" --force >/dev/null 2>&1; then
+      echo "  [ok] Extension installed"
+      rm -f "$VSIX_TMP"
+    else
+      echo "  \033[33m[info]\033[0m 'code' CLI not in PATH. Install manually:"
+      echo "         1. Open VSCode → Cmd+Shift+P → 'Shell Command: Install code command in PATH'"
+      echo "         2. Then run: code --install-extension $VSIX_TMP"
+      echo "         Or drag-and-drop the .vsix into VSCode Extensions panel."
+    fi
   else
     echo "  \033[31m[fail]\033[0m Download failed from: $VSIX_URL"
+    rm -f "$VSIX_TMP"
   fi
-  rm -f "$VSIX_TMP"
 fi
 
 echo ""
