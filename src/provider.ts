@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Stats, formatFullDuration } from './stats';
+import { Stats, formatFullDuration, formatSteamDuration } from './stats';
 import type { LiveSession } from './extension';
 
 export class ClockedViewProvider implements vscode.WebviewViewProvider {
@@ -87,12 +87,12 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     const streakContent = `
     <div class="grid">
       <div class="stat" title="${STREAK_TOOLTIP}">
-        <span class="stat-label">Current</span>
-        <span class="stat-value">${s ? `🔥 ${s.currentStreak}d` : '—'}</span>
+        <span class="stat-label" title="${STREAK_TOOLTIP}">Current</span>
+        <span class="stat-value" title="${STREAK_TOOLTIP}">${s ? `🔥 ${s.currentStreak}d` : '—'}</span>
       </div>
       <div class="stat" title="${STREAK_TOOLTIP}">
-        <span class="stat-label">Best</span>
-        <span class="stat-value">${s ? `🏆 ${s.longestStreak}d` : '—'}</span>
+        <span class="stat-label" title="${STREAK_TOOLTIP}">Best</span>
+        <span class="stat-value" title="${STREAK_TOOLTIP}">${s ? `🏆 ${s.longestStreak}d` : '—'}</span>
       </div>
     </div>`;
 
@@ -117,34 +117,42 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     const checkpointChip = s?.checkpointStart ? `since ${fmtDate(s.checkpointStart)}` : '';
     const everChip  = s?.firstRecorded ? `since ${fmtDate(s.firstRecorded)}` : '';
 
-    // ── Sessions content ───────────────────────────────────────────────────────
+    // ── AI Labor content ──────────────────────────────────────────────────────
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtShort = (ms: number) => {
       const sec = Math.floor(ms / 1000) % 60;
       const min = Math.floor(ms / 60000) % 60;
       const hr  = Math.floor(ms / 3600000);
-      return hr > 0 ? `${hr}h ${min}m ${sec}s` : min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+      return hr > 0 ? `${hr}h ${min}m` : min > 0 ? `${min}m ${sec}s` : `${sec}s`;
     };
     const sessionList = sessions ? Array.from(sessions.entries()) : [];
     const liveCount = sessionList.filter(([, s]) => !s.closed).length;
     const closedCount = sessionList.length - liveCount;
-    const sessionsChip = sessionList.length > 0 ? `${liveCount} live · ${sessionList.length} total` : '';
+    const laborChip = s ? formatSteamDuration(s.totalAiLaborMs) : '';
     const clearClosedBtn = closedCount > 0
       ? `<button class="session-clear-closed" title="Remove all closed sessions" onclick="vscode.postMessage({command:'clearClosedSessions'})">🧹</button>`
       : '';
+    const laborHero = s ? `<div class="labor-descriptor">AI agents laboring for</div>
+    <div class="labor-time" id="labor-time">${formatSteamDuration(s.totalAiLaborMs)}</div>` : '';
     const sessionsContent = sessionList.length === 0
-      ? `<div class="session-empty">No sessions yet</div>`
-      : sessionList.map(([id, sess]) => {
+      ? `${laborHero}<div class="session-empty">No sessions yet</div>`
+      : `${laborHero}` + sessionList.map(([id, sess]) => {
           const shortId = id.slice(0, 8);
           const liveDot = sess.isResponding ? '<span class="live-dot"></span>' : '';
           const lastResp = sess.isResponding && sess.promptTs
-            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}" title="Current AI response time">⚡ ${fmtShort(Date.now() - sess.promptTs)}</span>`
+            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}" title="Current AI response time this session">⚡ ${fmtShort(Date.now() - sess.promptTs)}</span>`
             : sess.lastResponseMs !== null
-              ? `<span class="session-stat" title="Last AI response time">⚡ ${fmtShort(sess.lastResponseMs)}</span>`
-              : `<span class="session-stat" title="Last AI response time">⚡ —</span>`;
+              ? `<span class="session-stat" title="Last AI response time this session">⚡ ${fmtShort(sess.lastResponseMs)}</span>`
+              : `<span class="session-stat" title="Last AI response time this session">⚡ —</span>`;
           const longest = sess.longestResponseMs > 0
-            ? `<span class="session-stat" title="Longest AI response time">⏱ ${fmtShort(sess.longestResponseMs)}</span>`
-            : `<span class="session-stat" title="Longest AI response time">⏱ —</span>`;
+            ? `<span class="session-stat" title="Longest AI response time this session">⏳ ${fmtShort(sess.longestResponseMs)}</span>`
+            : `<span class="session-stat" title="Longest AI response time this session">⏳ —</span>`;
+          const totalAttr = sess.isResponding && sess.promptTs
+            ? ` class="session-stat session-total-timer" data-total-base="${sess.totalResponseMs}" data-prompt-ts="${sess.promptTs}"`
+            : ` class="session-stat"`;
+          const total = sess.totalResponseMs > 0 || (sess.isResponding && sess.promptTs)
+            ? `<span${totalAttr} title="Total AI response time this session">🏗️ ${fmtShort(sess.totalResponseMs + (sess.isResponding && sess.promptTs ? Date.now() - sess.promptTs : 0))}</span>`
+            : `<span class="session-stat" title="Total AI response time this session">🏗️ —</span>`;
           const rowClass = sess.isResponding ? ' session-responding' : sess.closed ? ' session-closed' : ' session-standby';
           return `
       <div class="session-row${rowClass}">
@@ -156,6 +164,8 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
           ${lastResp}
           <span class="session-sep">&middot;</span>
           ${longest}
+          <span class="session-sep">&middot;</span>
+          ${total}
         </div>
       </div>`;
         }).join('');
@@ -352,7 +362,17 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   }
   .btn-red:hover { background: rgba(180, 40, 40, 0.38); }
 
-  /* ── Sessions ── */
+  /* ── AI Labor ── */
+  .labor-descriptor {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 2px;
+  }
+  .labor-time {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
   .session-empty {
     font-size: 11px;
     color: var(--vscode-descriptionForeground);
@@ -415,7 +435,6 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     align-items: center;
     gap: 6px;
     margin-top: 3px;
-    padding-left: 12px;
   }
   .session-stat {
     font-size: 10px;
@@ -448,7 +467,7 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   ${masterSection('checkpoint', '🔄 Checkpoint', checkpointContent, checkpointChip)}
   ${masterSection('alltime', '🔮 All Time', alltimeContent, everChip)}
   ${masterSection('streak', '🔥 Building Streak', streakContent, '', 'At least 1 hour of building with AI per day keeps the streak alive!')}
-  ${masterSection('sessions', '📋 Sessions', sessionsContent, sessionsChip, '', clearClosedBtn)}
+  ${masterSection('sessions', '🤖 AI Labor', sessionsContent, laborChip, '', clearClosedBtn)}
   ${masterSection('settings', '⚙️ Settings', settingsContent)}
 
 <script>
@@ -463,6 +482,18 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
   const TODAY_BASE_MS   = ${s?.todayActiveAiTime ?? 0};
   const CHECKPOINT_BASE_MS   = ${s?.checkpointAiTime ?? 0};
   const EVER_BASE_MS    = ${s?.everActiveAiTime ?? 0};
+  const LABOR_BASE_MS   = ${s?.totalAiLaborMs ?? 0};
+
+  function fmtSteam(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const sec = totalSec % 60;
+    const totalMin = Math.floor(totalSec / 60);
+    const min = totalMin % 60;
+    const totalHr = Math.floor(totalMin / 60);
+    if (totalHr > 0) return totalHr.toLocaleString() + 'h ' + min + 'm ' + sec + 's';
+    if (totalMin > 0) return min + 'm ' + sec + 's';
+    return sec + 's';
+  }
 
   function fmtFull(ms) {
     const totalSec  = Math.floor(ms / 1000);
@@ -487,7 +518,7 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     const sec = Math.floor(ms / 1000) % 60;
     const min = Math.floor(ms / 60000) % 60;
     const hr  = Math.floor(ms / 3600000);
-    return hr > 0 ? hr + 'h ' + min + 'm ' + sec + 's' : min > 0 ? min + 'm ' + sec + 's' : sec + 's';
+    return hr > 0 ? hr + 'h ' + min + 'm' : min > 0 ? min + 'm ' + sec + 's' : sec + 's';
   }
 
   function tick() {
@@ -503,10 +534,26 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
       if (ever)  ever.textContent  = fmtFull(EVER_BASE_MS  + elapsed);
     }
     // Session live response timers
+    let liveLabor = 0;
     document.querySelectorAll('.session-live-timer').forEach(el => {
       const ts = Number(el.getAttribute('data-prompt-ts'));
-      if (ts) el.textContent = '⚡ ' + fmtShort(now - ts);
+      if (ts) {
+        const elapsed = now - ts;
+        el.textContent = '⚡ ' + fmtShort(elapsed);
+        liveLabor += elapsed;
+      }
     });
+    // Per-session 🏗️ totals (tick when responding)
+    document.querySelectorAll('.session-total-timer').forEach(el => {
+      const base = Number(el.getAttribute('data-total-base')) || 0;
+      const ts = Number(el.getAttribute('data-prompt-ts'));
+      if (ts) el.textContent = '🏗️ ' + fmtShort(base + (now - ts));
+    });
+    // AI Labor total (frozen + all live sessions)
+    const laborEl = document.getElementById('labor-time');
+    if (laborEl && liveLabor > 0) {
+      laborEl.textContent = fmtSteam(LABOR_BASE_MS + liveLabor);
+    }
   }
   tick();
   setInterval(tick, 1000);

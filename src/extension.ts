@@ -18,6 +18,7 @@ export interface LiveSession {
   promptTs:           number | null; // ms — when current response started
   lastResponseMs:     number | null; // frozen duration of last completed response
   longestResponseMs:  number;       // high-water mark
+  totalResponseMs:    number;       // cumulative response time this session
   isResponding:       boolean;
   closed:             boolean;
 }
@@ -80,13 +81,14 @@ export function activate(context: vscode.ExtensionContext) {
         if (event === 'UserPromptSubmit') {
           let sess = sessions.get(session_id);
           if (!sess) {
-            sess = { startedAt: evMs, promptTs: null, lastResponseMs: null, longestResponseMs: 0, isResponding: false, closed: false };
+            sess = { startedAt: evMs, promptTs: null, lastResponseMs: null, longestResponseMs: 0, totalResponseMs: 0, isResponding: false, closed: false };
             sessions.set(session_id, sess);
           }
           // If was responding without a Stop, treat as interrupted
           if (sess.isResponding && sess.promptTs) {
             const elapsed = evMs - sess.promptTs;
             sess.lastResponseMs = elapsed;
+            sess.totalResponseMs += elapsed;
             if (elapsed > sess.longestResponseMs) sess.longestResponseMs = elapsed;
           }
           sess.promptTs = evMs;
@@ -99,6 +101,7 @@ export function activate(context: vscode.ExtensionContext) {
           if (sess && sess.isResponding && sess.promptTs) {
             const elapsed = evMs - sess.promptTs;
             sess.lastResponseMs = elapsed;
+            sess.totalResponseMs += elapsed;
             if (elapsed > sess.longestResponseMs) sess.longestResponseMs = elapsed;
             sess.isResponding = false;
           }
@@ -110,6 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (sess.isResponding && sess.promptTs) {
               const elapsed = evMs - sess.promptTs;
               sess.lastResponseMs = elapsed;
+              sess.totalResponseMs += elapsed;
               if (elapsed > sess.longestResponseMs) sess.longestResponseMs = elapsed;
             }
             sess.isResponding = false;

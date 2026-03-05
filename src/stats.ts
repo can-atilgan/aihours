@@ -19,6 +19,8 @@ export interface Stats {
   checkpointAiTime: number; // ms
   // Ever AI — ignores checkpoint resets
   everActiveAiTime: number; // ms
+  // AI labor — cumulative response time
+  totalAiLaborMs: number; // ms
   // Streaks
   currentStreak: number; // days
   longestStreak: number; // days
@@ -203,6 +205,7 @@ export function calcStats(activityFile?: ActivityFile): Stats {
     todayActiveAiTime,
     checkpointAiTime,
     everActiveAiTime,
+    totalAiLaborMs: file.total_ai_labor_ms ?? 0,
     currentStreak:  streakToday > 0 ? streakToday : streakYest,
     longestStreak:  calcLongestStreak(byDay),
     checkpointStart,
@@ -245,4 +248,17 @@ export function formatDuration(ms: number): string {
   if (d > 0)       return `${d}d ${h}h`;
   if (totalHr > 0) return `${h}h ${m}m`;
   return `${m}m ${s}s`;
+}
+
+// Steam-style: always total hours, never days. e.g. "1,247h 34m 12s"
+export function formatSteamDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const s = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
+  const m = totalMin % 60;
+  const totalHr = Math.floor(totalMin / 60);
+
+  if (totalHr > 0) return `${totalHr.toLocaleString()}h ${m}m ${s}s`;
+  if (totalMin > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }

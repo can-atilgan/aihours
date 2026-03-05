@@ -17,6 +17,8 @@ export interface ActivityFile {
   last_updated_at:    string;
   last_checkpoint_at:  string | null;
   last_events_size:   number;          // byte size of events.jsonl at last processing
+  total_ai_labor_ms:  number;          // cumulative AI response time across all sessions
+  pending_prompts:    Record<string, number>;  // session_id → prompt timestamp (ms), awaiting Stop
   activities:         Activity[];
 }
 
@@ -27,8 +29,9 @@ export function isClosed(a: Activity): a is ClosedActivity {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 interface RawEvent {
-  ts:    string;
-  event: string;
+  ts:         string;
+  event:      string;
+  session_id?: string;
 }
 
 function readNewEvents(eventsPath: string, byteOffset: number): RawEvent[] {
@@ -46,7 +49,7 @@ function readNewEvents(eventsPath: string, byteOffset: number): RawEvent[] {
 }
 
 function emptyActivityFile(now: string): ActivityFile {
-  return { last_updated_at: now, last_checkpoint_at: null, last_events_size: 0, activities: [] };
+  return { last_updated_at: now, last_checkpoint_at: null, last_events_size: 0, total_ai_labor_ms: 0, pending_prompts: {}, activities: [] };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -92,6 +95,10 @@ export function processEvents(
     ? readNewEvents(eventsPath, file.last_events_size)
     : [];
 
+  // AI labor: track per-session prompt timestamps to measure response times
+  let totalAiLaborMs = file.total_ai_labor_ms ?? 0;
+  const pendingPrompts: Record<string, number> = { ...(file.pending_prompts ?? {}) };
+
   // Find the open activity (last entry with no end), if any
   const lastIdx    = activities.length - 1;
   let openIdx      = lastIdx >= 0 && !isClosed(activities[lastIdx]) ? lastIdx : -1;
@@ -113,12 +120,19 @@ export function processEvents(
     }
 
     if (ev.event === 'Stop') {
+      // AI labor: accumulate response time for this session
+      if (ev.session_id && pendingPrompts[ev.session_id]) {
+        totalAiLaborMs += evMs - pendingPrompts[ev.session_id];
+        delete pendingPrompts[ev.session_id];
+      }
       if (openIdx === -1) continue;
       (activities[openIdx] as OpenActivity).lastClaudeDone = ev.ts;
       continue;
     }
 
     if (ev.event === 'UserPromptSubmit') {
+      // AI labor: record prompt timestamp for this session
+      if (ev.session_id) pendingPrompts[ev.session_id] = evMs;
       if (openIdx === -1) {
         // No open activity — start one
         activities.push({ start: ev.ts });
@@ -163,6 +177,8 @@ export function processEvents(
     last_updated_at:  now,
     last_checkpoint_at: lastCheckpointAt,
     last_events_size: currentSize,
+    total_ai_labor_ms: totalAiLaborMs,
+    pending_prompts: pendingPrompts,
     activities,
   };
   fs.writeFileSync(activityPath, JSON.stringify(updated, null, 2));
