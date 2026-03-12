@@ -65,6 +65,8 @@ Processed file, rewritten on each refresh.
   "last_updated_at": "2026-03-01T16:30:00Z",
   "last_checkpoint_at": null,
   "last_events_size": 12345,
+  "total_ai_labor_ms": 54321,
+  "pending_prompts": { "abc-session-id": 1709312400000 },
   "activities": [
     { "start": "2026-03-01T10:00:00Z", "end": "2026-03-01T10:45:00Z" },
     { "start": "2026-03-01T14:00:00Z", "lastClaudeDone": "2026-03-01T14:05:00Z" }
@@ -84,3 +86,18 @@ Stats read from `activity.json` directly — no JSONL parsing needed for display
 ## First run (no activity.json)
 
 Rename `events.jsonl` to `events.backup.YYYY-MM-DD.jsonl`. Start fresh with empty files.
+
+## AI Labor tracking
+
+Measures cumulative AI response time — how long Claude actually spent thinking across all sessions.
+
+Each event carries an optional `session_id`. The processor tracks prompt→response pairs per session:
+
+- `UserPromptSubmit` with `session_id` → store `pending_prompts[session_id] = event timestamp (ms)`
+- `Stop` with `session_id` and matching pending prompt → `total_ai_labor_ms += stop_ts - pending_prompts[session_id]`, delete pending entry
+- `Stop` without matching pending prompt → ignored (harmless)
+- `ManualAfk` → does NOT resolve pending prompts (only closes the activity period)
+
+`pending_prompts` is persisted in `activity.json` so prompt→stop pairs that span across refresh cycles are tracked correctly. Without this, a prompt arriving in one cycle and its stop in the next would be lost.
+
+`total_ai_labor_ms` is cumulative and only grows. It is never reset (except by nuking all data).

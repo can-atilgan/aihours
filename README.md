@@ -10,10 +10,15 @@ Live status bar. Daily streak. Honest numbers.
 
 ## What it tracks
 
-- **Today** — active AI building time for today
+- **Today** — active AI building time, live-ticking while AI is responding
 - **Checkpoint** — your current period (reset whenever you want a fresh start)
 - **All Time** — the full career clock, unaffected by resets
 - **Building Streak** — consecutive days with 1+ hour of active AI time
+- **AI Labor** — cumulative AI response time (Steam-style hours). Per-session breakdown: ⚡ current, ⏳ longest, 🏗️ total
+
+Live sessions show a pulsing green dot. Closed sessions turn red. Sweep them away with 🧹.
+
+Hit ⏸ in the Today panel to manually mark yourself AFK — closes the current activity immediately.
 
 Idle gaps are automatically excluded, so the number means something. If you walked away and came back 30 minutes later, that half hour doesn't pad your stats.
 

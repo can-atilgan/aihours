@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcStats, formatDuration } from '../src/stats';
+import { calcStats, formatDuration, formatSteamDuration } from '../src/stats';
 import { type ActivityFile } from '../src/activityProcessor';
 import { AFK_THRESHOLD_MS, STREAK_MIN_MS } from '../src/config';
 
@@ -161,7 +161,7 @@ function setup() {
   return { ap, ep };
 }
 
-function writeEvents(ep: string, events: { ts: string; event: string }[]) {
+function writeEvents(ep: string, events: { ts: string; event: string; session_id?: string }[]) {
   fs.writeFileSync(ep, events.map(e => JSON.stringify(e)).join('\n') + '\n');
 }
 
@@ -277,5 +277,92 @@ describe('processEvents — open activity', () => {
     processEvents(ap, ep);
     const file = readActivityFile(ap);
     expect(file.last_checkpoint_at).toBe(resetTs);
+  });
+});
+
+// ── processEvents — AI labor ─────────────────────────────────────────────────
+
+describe('processEvents — AI labor', () => {
+  it('UserPromptSubmit with session_id stores pending_prompt', () => {
+    const { ap, ep } = setup();
+    const now = Date.now();
+    const promptTs = new Date(now).toISOString();
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, total_ai_labor_ms: 0, pending_prompts: {}, activities: [] });
+    writeEvents(ep, [{ ts: promptTs, event: 'UserPromptSubmit', session_id: 'sess-1' }]);
+    processEvents(ap, ep);
+    const file = readActivityFile(ap);
+    expect(file.pending_prompts['sess-1']).toBe(new Date(promptTs).getTime());
+  });
+
+  it('Stop with matching session_id accumulates total_ai_labor_ms and clears pending_prompt', () => {
+    const { ap, ep } = setup();
+    const now = Date.now();
+    const promptMs = now - 5000;
+    const stopTs = new Date(now).toISOString();
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, total_ai_labor_ms: 0, pending_prompts: { 'sess-1': promptMs }, activities: [{ start: new Date(now - 10 * MIN).toISOString() }] });
+    writeEvents(ep, [{ ts: stopTs, event: 'Stop', session_id: 'sess-1' }]);
+    processEvents(ap, ep);
+    const file = readActivityFile(ap);
+    expect(file.total_ai_labor_ms).toBeGreaterThanOrEqual(4900);
+    expect(file.total_ai_labor_ms).toBeLessThanOrEqual(5100);
+    expect(file.pending_prompts['sess-1']).toBeUndefined();
+  });
+
+  it('pending_prompts persist across processEvents calls', () => {
+    const { ap, ep } = setup();
+    const now = Date.now();
+    const promptTs = new Date(now).toISOString();
+    // First call: UserPromptSubmit stores pending
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, total_ai_labor_ms: 0, pending_prompts: {}, activities: [] });
+    writeEvents(ep, [{ ts: promptTs, event: 'UserPromptSubmit', session_id: 'sess-1' }]);
+    processEvents(ap, ep);
+    const file1 = readActivityFile(ap);
+    expect(file1.pending_prompts['sess-1']).toBeDefined();
+    // Second call: Stop resolves it using persisted pending
+    const stopTs = new Date(now + 3000).toISOString();
+    fs.writeFileSync(ep, fs.readFileSync(ep, 'utf8') + JSON.stringify({ ts: stopTs, event: 'Stop', session_id: 'sess-1' }) + '\n');
+    processEvents(ap, ep);
+    const file2 = readActivityFile(ap);
+    expect(file2.total_ai_labor_ms).toBeGreaterThanOrEqual(2900);
+    expect(file2.total_ai_labor_ms).toBeLessThanOrEqual(3100);
+    expect(file2.pending_prompts['sess-1']).toBeUndefined();
+  });
+
+  it('ManualAfk does NOT resolve pending prompts', () => {
+    const { ap, ep } = setup();
+    const now = Date.now();
+    const promptMs = now - 5000;
+    const afkTs = new Date(now).toISOString();
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, total_ai_labor_ms: 0, pending_prompts: { 'sess-1': promptMs }, activities: [{ start: new Date(now - 10 * MIN).toISOString(), lastClaudeDone: new Date(now - 5 * MIN).toISOString() }] });
+    writeEvents(ep, [{ ts: afkTs, event: 'ManualAfk' }]);
+    processEvents(ap, ep);
+    const file = readActivityFile(ap);
+    expect(file.pending_prompts['sess-1']).toBe(promptMs);
+    expect(file.total_ai_labor_ms).toBe(0);
+  });
+
+  it('Stop without matching pending_prompt is harmless', () => {
+    const { ap, ep } = setup();
+    const now = Date.now();
+    const stopTs = new Date(now).toISOString();
+    writeActivity(ap, { last_updated_at: new Date(now - MIN).toISOString(), last_checkpoint_at: null, last_events_size: 0, total_ai_labor_ms: 0, pending_prompts: {}, activities: [{ start: new Date(now - 10 * MIN).toISOString() }] });
+    writeEvents(ep, [{ ts: stopTs, event: 'Stop', session_id: 'sess-unknown' }]);
+    processEvents(ap, ep);
+    const file = readActivityFile(ap);
+    expect(file.total_ai_labor_ms).toBe(0);
+  });
+});
+
+// ── formatSteamDuration ──────────────────────────────────────────────────────
+
+describe('formatSteamDuration', () => {
+  it('0ms → 0s',       () => expect(formatSteamDuration(0)).toBe('0s'));
+  it('45s',            () => expect(formatSteamDuration(45_000)).toBe('45s'));
+  it('1m 30s',         () => expect(formatSteamDuration(90_000)).toBe('1m 30s'));
+  it('1h 5m 0s',       () => expect(formatSteamDuration(65 * MIN)).toBe('1h 5m 0s'));
+  it('25h 0m 0s',      () => expect(formatSteamDuration(25 * HR)).toBe('25h 0m 0s'));
+  it('large hours use locale separator', () => {
+    const expected = (1247).toLocaleString() + 'h 34m 12s';
+    expect(formatSteamDuration(1_247 * HR + 34 * MIN + 12_000)).toBe(expected);
   });
 });

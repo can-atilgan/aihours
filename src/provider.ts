@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Stats, formatFullDuration, formatSteamDuration } from './stats';
+import { Stats, formatDuration, formatFullDuration, formatSteamDuration } from './stats';
 import type { LiveSession } from './extension';
 
 export class ClockedViewProvider implements vscode.WebviewViewProvider {
@@ -118,16 +118,8 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
     const everChip  = s?.firstRecorded ? `since ${fmtDate(s.firstRecorded)}` : '';
 
     // ── AI Labor content ──────────────────────────────────────────────────────
-    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const fmtShort = (ms: number) => {
-      const sec = Math.floor(ms / 1000) % 60;
-      const min = Math.floor(ms / 60000) % 60;
-      const hr  = Math.floor(ms / 3600000);
-      return hr > 0 ? `${hr}h ${min}m` : min > 0 ? `${min}m ${sec}s` : `${sec}s`;
-    };
     const sessionList = sessions ? Array.from(sessions.entries()) : [];
-    const liveCount = sessionList.filter(([, s]) => !s.closed).length;
-    const closedCount = sessionList.length - liveCount;
+    const closedCount = sessionList.filter(([, s]) => s.closed).length;
     const laborChip = s ? formatSteamDuration(s.totalAiLaborMs) : '';
     const clearClosedBtn = closedCount > 0
       ? `<button class="session-clear-closed" title="Remove all closed sessions" onclick="vscode.postMessage({command:'clearClosedSessions'})">🧹</button>`
@@ -140,18 +132,18 @@ export class ClockedViewProvider implements vscode.WebviewViewProvider {
           const shortId = id.slice(0, 8);
           const liveDot = sess.isResponding ? '<span class="live-dot"></span>' : '';
           const lastResp = sess.isResponding && sess.promptTs
-            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}" title="Current AI response time this session">⚡ ${fmtShort(Date.now() - sess.promptTs)}</span>`
+            ? `<span class="session-stat session-live-timer" data-prompt-ts="${sess.promptTs}" title="Current AI response time this session">⚡ ${formatDuration(Date.now() - sess.promptTs)}</span>`
             : sess.lastResponseMs !== null
-              ? `<span class="session-stat" title="Last AI response time this session">⚡ ${fmtShort(sess.lastResponseMs)}</span>`
+              ? `<span class="session-stat" title="Last AI response time this session">⚡ ${formatDuration(sess.lastResponseMs)}</span>`
               : `<span class="session-stat" title="Last AI response time this session">⚡ —</span>`;
           const longest = sess.longestResponseMs > 0
-            ? `<span class="session-stat" title="Longest AI response time this session">⏳ ${fmtShort(sess.longestResponseMs)}</span>`
+            ? `<span class="session-stat" title="Longest AI response time this session">⏳ ${formatDuration(sess.longestResponseMs)}</span>`
             : `<span class="session-stat" title="Longest AI response time this session">⏳ —</span>`;
           const totalAttr = sess.isResponding && sess.promptTs
             ? ` class="session-stat session-total-timer" data-total-base="${sess.totalResponseMs}" data-prompt-ts="${sess.promptTs}"`
             : ` class="session-stat"`;
           const total = sess.totalResponseMs > 0 || (sess.isResponding && sess.promptTs)
-            ? `<span${totalAttr} title="Total AI response time this session">🏗️ ${fmtShort(sess.totalResponseMs + (sess.isResponding && sess.promptTs ? Date.now() - sess.promptTs : 0))}</span>`
+            ? `<span${totalAttr} title="Total AI response time this session">🏗️ ${formatDuration(sess.totalResponseMs + (sess.isResponding && sess.promptTs ? Date.now() - sess.promptTs : 0))}</span>`
             : `<span class="session-stat" title="Total AI response time this session">🏗️ —</span>`;
           const rowClass = sess.isResponding ? ' session-responding' : sess.closed ? ' session-closed' : ' session-standby';
           return `
